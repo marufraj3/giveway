@@ -145,3 +145,24 @@ test('Pages feed their posts, and several selected posts scrape together from on
   assert.match(rendered.text(),/2 batches/);
   await close(rendered);
 });
+
+test('a Page token that cannot list Pages keeps the session and explains why', async () => {
+  mockApi();
+  const {writeSessionToken,readSessionToken} = await import('../lib/session-token');
+  writeSessionToken('page-token');
+  routes.validate = () => ({body:{id:'501', name:'Page One', type:'Unknown'}});
+  routes.pages = () => ({status:401, body:{error:'This method must be called with a user access token', code:'TOKEN', retryable:false}});
+  const rendered = await renderDashboard();
+  await waitFor(rendered,() => calls.some(call => call.action === 'pages'),'pages request');
+  await waitFor(rendered,() => /Unavailable/.test(rendered.text()),'pages unavailable');
+  assert.match(rendered.text(),/At a glance/);
+  assert.equal(readSessionToken(),'page-token');
+
+  const navigate = Array.from(rendered.container.querySelectorAll('button')).find(button => (button.textContent || '').includes('New Scraper'));
+  if (!navigate) throw new Error('missing New Scraper');
+  await rendered.React.act(async () => { navigate.click(); });
+  await waitFor(rendered,() => /cannot list Pages/.test(rendered.text()),'page warning');
+  assert.match(rendered.text(),/paste post links or IDs/i);
+  assert.equal(readSessionToken(),'page-token');
+  await close(rendered);
+});

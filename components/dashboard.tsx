@@ -139,12 +139,13 @@ export default function Dashboard() {
       } catch (e) {
         if (serial !== connectionSerial.current) return;
         const error = e as Error & { code?: string };
-        if (error.code === 'TOKEN') {
-          clearSessionToken(); setSession(null);
-          setGateNotice(error.message || 'The token is invalid or expired. Enter a new one.');
-          return;
-        }
-        setPageWarning('Could not list Pages with this token. You can still paste post links or IDs with a suitable Page token.');
+        // Listing Pages is optional. A Page access token cannot call /me/accounts at all
+        // (Meta answers with code 190), so this must never end the session: the same
+        // token can still read every post that is pasted or picked. Only the validation
+        // call decides whether a token is usable.
+        setPageWarning(error.code === 'TOKEN'
+          ? 'This token cannot list Pages — Page access tokens may not use /me/accounts. Nothing is wrong with the token itself; paste post links or IDs to continue with this Page.'
+          : 'Could not list Pages with this token. You can still paste post links or IDs with a suitable Page token.');
       } finally {
         if (serial === connectionSerial.current) setLoadingPages(false);
       }
@@ -310,7 +311,7 @@ export default function Dashboard() {
                     </div>
                     <button className="btn secondary small" onClick={() => go('New Scraper')}>Manage <ArrowRight size={14}/></button>
                   </div>
-                  <div className="detail-row"><span>Pages listed</span><strong>{loadingPages ? 'Loading…' : pages.length}</strong></div>
+                  <div className="detail-row"><span>Pages listed</span><strong>{loadingPages ? 'Loading…' : pages.length ? pages.length : pageWarning ? 'Unavailable' : 0}</strong></div>
                   <div className="detail-row"><span>Posts selected</span><strong>{selectedCount}</strong></div>
                   <div className="detail-row"><span>Token type</span><strong>Not determined</strong></div>
                 </div>

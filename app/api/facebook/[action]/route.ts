@@ -2,6 +2,7 @@ import { NextRequest, NextResponse } from 'next/server';
 import { GraphError, graph, nextCursor } from '@/lib/graph';
 import { mapComment } from '@/lib/facebook';
 import { PAGE_POSTS_LIMIT, isPageId, mapPagePosts } from '@/lib/posts-core';
+import { normalizeAccessToken } from '@/lib/token-input';
 import { ShareResolveError, resolvePostInput } from '@/lib/share-resolve';
 export const maxDuration = 30;
 export const dynamic = 'force-dynamic';
@@ -12,8 +13,10 @@ export async function POST(req:NextRequest, {params}:{params:Promise<{action:str
     if (Number(req.headers.get('content-length') || 0) > 16000) throw new GraphError('INPUT','Request too large.',400);
     const body = await req.json().catch(() => { throw new GraphError('INPUT','Invalid request.',400); });
     const {action} = await params;
-    const token = body?.token;
-    if (typeof token !== 'string' || !token.trim() || token.length > 8192 || /[\r\n]/.test(token)) throw new GraphError('INPUT','Enter a valid access token.',400);
+    // Trim pasted whitespace and invisible characters, then forward the exact token;
+    // Meta must see the same string the user copied.
+    const { token, error: tokenError } = normalizeAccessToken(body?.token);
+    if (tokenError) throw new GraphError('INPUT', tokenError, 400);
     const cursor = body.cursor;
     if (cursor != null && (typeof cursor !== 'string' || !cursor || cursor.length > 4096)) throw new GraphError('INPUT','Invalid pagination cursor.',400);
     const paging:Record<string,string> = cursor ? {after:cursor} : {};
