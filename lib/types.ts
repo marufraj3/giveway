@@ -3,4 +3,6 @@ export interface CommentRecord {
 }
 export const FIELDS: (keyof CommentRecord)[] = ['author','username','text','likes','replies','created_at','language','is_pinned','id','reply_to_id','avatar_url','reaction_count','reactions_love','reactions_haha','reactions_wow','reactions_sad','reactions_anger','reactions_care','author_id','author_gender'];
 export interface Page { id:string; name:string }
-export type JobStatus = 'Ready'|'Fetching Comments'|'Fetching Replies'|'Paused'|'Resuming'|'Retrying'|'Completed'|'Stopped'|'Failed'|'Partially Completed';
+/** One object from `/{page-id}/posts`, as shown in the post picker. */
+export interface PagePost { id:string; message:string; created_time:string; comment_count:number|null }
+export type JobStatus = 'Ready'|'Resolving Posts'|'Fetching Comments'|'Fetching Replies'|'Paused'|'Resuming'|'Retrying'|'Completed'|'Stopped'|'Failed'|'Partially Completed';

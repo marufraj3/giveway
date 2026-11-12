@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GraphError, graph, nextCursor } from '@/lib/graph';
 import { mapComment } from '@/lib/facebook';
+import { PAGE_POSTS_LIMIT, isPageId, mapPagePosts } from '@/lib/posts-core';
 import { ShareResolveError, resolvePostInput } from '@/lib/share-resolve';
 export const maxDuration = 30;
 export const dynamic = 'force-dynamic';
@@ -26,6 +27,17 @@ export async function POST(req:NextRequest, {params}:{params:Promise<{action:str
       if (!Array.isArray(data.data)) throw new GraphError('RESPONSE','Meta returned an unexpected Page list.',502);
       const pages = data.data.filter((p:unknown): p is {id:string;name:string} => !!p && typeof p === 'object' && typeof (p as Record<string,unknown>).id === 'string' && typeof (p as Record<string,unknown>).name === 'string').map(p => ({id:p.id,name:p.name}));
       return reply({pages,nextCursor:nextCursor(data)});
+    }
+    if (action === 'pageposts') {
+      // Page posts for the picker. One small page at a time so a Page with thousands of
+      // posts never becomes a single long request.
+      const page = body.page;
+      if (!isPageId(page)) throw new GraphError('INPUT','Invalid Page ID.',400);
+      const limit = body.limit == null ? PAGE_POSTS_LIMIT : Number(body.limit);
+      if (!Number.isInteger(limit) || limit < 1 || limit > 100) throw new GraphError('INPUT','Post list size must be between 1 and 100.',400);
+      const data = await graph(`${page}/posts`,token,{fields:'id,message,created_time,comments.limit(0).summary(true)',limit:String(limit),...paging});
+      if (!Array.isArray(data.data)) throw new GraphError('RESPONSE','Meta returned an unexpected post list.',502);
+      return reply({posts:mapPagePosts(data.data),nextCursor:nextCursor(data)});
     }
     if (action === 'post') {
       // Numeric IDs and supported post URLs are parsed locally as before. /share/p/ links are
