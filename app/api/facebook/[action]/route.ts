@@ -1,6 +1,7 @@
 import { NextRequest, NextResponse } from 'next/server';
 import { GraphError, graph, nextCursor } from '@/lib/graph';
-import { extractPostId, mapComment } from '@/lib/facebook';
+import { mapComment } from '@/lib/facebook';
+import { ShareResolveError, resolvePostInput } from '@/lib/share-resolve';
 export const maxDuration = 30;
 export const dynamic = 'force-dynamic';
 const idPattern = /^\d+(?:_\d+)?$/;
@@ -27,7 +28,9 @@ export async function POST(req:NextRequest, {params}:{params:Promise<{action:str
       return reply({pages,nextCursor:nextCursor(data)});
     }
     if (action === 'post') {
-      const id = typeof body.post === 'string' ? extractPostId(body.post) : null;
+      // Numeric IDs and supported post URLs are parsed locally as before. /share/p/ links are
+      // resolved from Facebook's redirect; the access token is never given to the resolver.
+      const id = typeof body.post === 'string' ? await resolvePostInput(body.post) : null;
       if (!id) throw new GraphError('INPUT','Unsupported post link or ID. Enter a numeric post ID manually.',400);
       const data = await graph(id,token,{fields:'id,message,created_time'});
       if (typeof data.id !== 'string') throw new GraphError('RESPONSE','Meta did not return a valid post.',502);
@@ -49,6 +52,7 @@ export async function POST(req:NextRequest, {params}:{params:Promise<{action:str
     throw new GraphError('INPUT','Unknown endpoint.',404);
   } catch (error) {
     if (error instanceof GraphError) return reply({error:error.message,code:error.code,retryable:error.retryable,retryAfter:error.retryAfter},error.status);
+    if (error instanceof ShareResolveError) return reply({error:error.message,code:error.code,retryable:error.retryable},error.status);
     return reply({error:'The request could not be completed. Please try again.',code:'UNKNOWN',retryable:false},500);
   }
 }

@@ -1,5 +1,6 @@
 'use client';
 import { useCallback, useRef, useState } from 'react';
+import { isSharePostLink } from '@/lib/facebook';
 import type { CommentRecord, JobStatus } from '@/lib/types';
 
 type Task = {kind:'comments'|'replies'; id:string; cursor:string|null; seen:Set<string>};
@@ -73,14 +74,15 @@ export function useScraper() {
   const start = useCallback(async (token:string, input:string, limit:number, includeReplies:boolean) => {
     const generation = ++serial.current;
     if (jobRef.current) {jobRef.current.cancelled = true; jobRef.current.abort?.abort();}
-    jobRef.current = null; setRecords([]); setBatches(0); setError(''); setPost(null); setStatus('Fetching Comments'); setCurrent('Validating post');
+    const share = isSharePostLink(input);
+    jobRef.current = null; setRecords([]); setBatches(0); setError(''); setPost(null); setStatus('Fetching Comments'); setCurrent(share ? 'Resolving share link' : 'Validating post');
     try {
       const result = await api('post',{token,post:input});
       if (generation !== serial.current) return;
       setPost(result);
       const job:Job = {token,limit,includeReplies,queue:[{kind:'comments',id:result.id,cursor:null,seen:new Set()}],records:new Map(),scheduled:new Set(),batches:0,running:false,paused:false,cancelled:false,abort:null,cooldownUntil:0,generation};
       jobRef.current = job; void run(job);
-    } catch(e) { if (generation !== serial.current) return; setError((e as Error).message); setStatus('Failed'); setCurrent('Post validation failed'); }
+    } catch(e) { if (generation !== serial.current) return; setError((e as Error).message); setStatus('Failed'); setCurrent(e instanceof ApiError && e.code.startsWith('SHARE_') ? 'Share link not resolved' : 'Post validation failed'); }
   },[run]);
   const pause = useCallback(() => { const job=jobRef.current; if(job) {job.paused=true; setStatus('Paused'); setCurrent('Paused · current batch will finish');} },[]);
   const resume = useCallback(() => {const job=jobRef.current; if(job && !job.cancelled) {if (Date.now() < job.cooldownUntil) {setError(`Meta requested a wait. Retry in ${Math.ceil((job.cooldownUntil-Date.now())/1000)} seconds.`);return;} job.paused=false; setError(''); setStatus('Resuming'); if (!job.running) void run(job);}},[run]);

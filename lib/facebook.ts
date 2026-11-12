@@ -15,6 +15,22 @@ export function extractPostId(input: string): string | null {
     return null;
   } catch { return null; }
 }
+/**
+ * Returns the code of a Facebook post share link (https://www.facebook.com/share/p/<code>/),
+ * or null. Parsing only: share links carry no post ID, so the server must resolve them
+ * from Facebook's redirect (see lib/share-resolve-core.ts). Safe to use in the browser.
+ */
+export function sharePostCode(input: string): string | null {
+  const value = input.trim();
+  if (!value || value.length > 2048) return null;
+  try {
+    const u = new URL(value);
+    if (u.protocol !== 'https:' || !/^(?:www\.|web\.|m\.|mobile\.)?facebook\.com$/i.test(u.hostname)) return null;
+    if (u.port || u.username || u.password) return null;
+    return u.pathname.match(/^\/share\/p\/([A-Za-z0-9_-]{1,64})\/?$/)?.[1] ?? null;
+  } catch { return null; }
+}
+export const isSharePostLink = (input: string) => sharePostCode(input) !== null;
 const str = (x:unknown) => typeof x === 'string' ? x : '';
 const num = (x:unknown) => typeof x === 'number' && Number.isFinite(x) && x >= 0 ? x : 0;
 export function mapComment(raw: Record<string, unknown>, parent = ''): CommentRecord {
