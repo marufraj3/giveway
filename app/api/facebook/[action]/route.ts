@@ -21,9 +21,19 @@ export async function POST(req:NextRequest, {params}:{params:Promise<{action:str
     if (cursor != null && (typeof cursor !== 'string' || !cursor || cursor.length > 4096)) throw new GraphError('INPUT','Invalid pagination cursor.',400);
     const paging:Record<string,string> = cursor ? {after:cursor} : {};
     if (action === 'validate') {
-      const data = await graph('me',token,{fields:'id,name'});
-      if (typeof data.id !== 'string') throw new GraphError('RESPONSE','Meta did not return a valid identity.',502);
-      return reply({id:data.id,name:typeof data.name === 'string' ? data.name : '', type:'Unknown'});
+      try {
+        const data = await graph('me',token,{fields:'id,name'});
+        if (typeof data.id !== 'string') throw new GraphError('RESPONSE','Meta did not return a valid identity.',502);
+        return reply({id:data.id,name:typeof data.name === 'string' ? data.name : '', type:'Unknown', verified:true});
+      } catch (error) {
+        // /me is a user-token endpoint. Page access tokens for the new Pages experience and
+        // Business Manager System User tokens can be valid for Page and post endpoints while
+        // /me rejects them, so report the reason and let the first real request decide.
+        if (error instanceof GraphError && (error.code === 'TOKEN' || error.code === 'ACCESS')) {
+          return reply({id:'',name:'',type:'Unknown',verified:false,notice:error.message});
+        }
+        throw error;
+      }
     }
     if (action === 'pages') {
       const data = await graph('me/accounts',token,{fields:'id,name',limit:'100',...paging});

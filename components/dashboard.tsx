@@ -58,7 +58,7 @@ const clip = (text: string, max: number) => {
   if (!value) return '';
   return value.length > max ? `${value.slice(0, max)}…` : value;
 };
-type Session = { token: string; identity: string };
+type Session = { token: string; identity: string; verified: boolean; notice?: string };
 
 export default function Dashboard() {
   const [section, setSection] = useState<Section>('Overview');
@@ -105,7 +105,13 @@ export default function Dashboard() {
         // A token entered or cleared while this request was in flight wins.
         if (cancelled || readSessionToken() !== stored) return;
         setLoadingPages(true);
-        setSession({ token: stored, identity: typeof user.name === 'string' && user.name ? user.name : user.id });
+        const verified = user?.verified !== false;
+        setSession({
+          token: stored,
+          identity: verified ? (typeof user.name === 'string' && user.name ? user.name : typeof user.id === 'string' ? user.id : 'Connected') : 'Token not verified',
+          verified,
+          notice: verified ? undefined : (typeof user.notice === 'string' ? user.notice : undefined),
+        });
       } catch (e) {
         if (readSessionToken() !== stored) return;
         clearSessionToken();
@@ -152,12 +158,12 @@ export default function Dashboard() {
     })();
   }, [session]);
 
-  const connect = (token: string, name: string) => {
+  const connect = (token: string, name: string, options?: { verified: boolean; notice?: string }) => {
     writeSessionToken(token);
     setGateNotice('');
     setSection('Overview');
     setPages([]); setPageWarning(''); setLoadingPages(true); setPostFilter('all'); setTablePage(1);
-    setSession({ token, identity: name });
+    setSession({ token, identity: name, verified: options?.verified ?? true, notice: options?.notice });
   };
   const disconnect = () => {
     ++connectionSerial.current;
@@ -301,7 +307,7 @@ export default function Dashboard() {
                 <div className="panel connection-panel">
                   <div className="panel-header">
                     <div><h3>Connection</h3><p>Your Facebook connection details.</p></div>
-                    <div className="status-badge success"><span className="green-dot"/> Connected</div>
+                    <div className={`status-badge ${session.verified ? 'success' : ''}`}><span className={session.verified ? 'green-dot' : 'gray-dot'}/> {session.verified ? 'Connected' : 'Connected · unverified'}</div>
                   </div>
                   <div className="connection-body">
                     <div className="facebook-mark">f</div>
@@ -314,6 +320,7 @@ export default function Dashboard() {
                   <div className="detail-row"><span>Pages listed</span><strong>{loadingPages ? 'Loading…' : pages.length ? pages.length : pageWarning ? 'Unavailable' : 0}</strong></div>
                   <div className="detail-row"><span>Posts selected</span><strong>{selectedCount}</strong></div>
                   <div className="detail-row"><span>Token type</span><strong>Not determined</strong></div>
+                  <div className="detail-row"><span>Token check</span><strong>{session.verified ? 'Confirmed by /me' : 'Not confirmed by /me'}</strong></div>
                 </div>
                 <div className="panel activity-panel">
                   <div className="panel-header">
@@ -358,7 +365,7 @@ export default function Dashboard() {
                     <div className="step-header">
                       <span className="step-number">01</span>
                       <div><h3>Connected account</h3><p>Your access token was validated before the dashboard opened.</p></div>
-                      <span className="status-badge success"><span className="green-dot"/> Connected</span>
+                      <span className={`status-badge ${session.verified ? 'success' : ''}`}><span className={session.verified ? 'green-dot' : 'gray-dot'}/> {session.verified ? 'Connected' : 'Connected · unverified'}</span>
                     </div>
                     <div className="form-body">
                       <div className="account-row">
@@ -366,6 +373,14 @@ export default function Dashboard() {
                         <div><strong>{identity}</strong><span>Token kept in this browser tab · type not determined</span></div>
                         <button className="btn secondary small" onClick={disconnect} disabled={busy}><LogOut size={14}/> Disconnect</button>
                       </div>
+                      {!session.verified && (
+                        <div className="alert warning">
+                          <AlertCircle size={16}/>
+                          <span>
+                            <strong>Meta did not confirm this token on /me.</strong> {session.notice} Page and System User tokens often work only on Page and post endpoints, so the first request will confirm access; Page listing may stay unavailable, in which case paste post links or IDs.
+                          </span>
+                        </div>
+                      )}
                       <p className="helper">Pages, posts and comments are read with this token. To use a different token, disconnect and enter a new one.</p>
                     </div>
                   </div>

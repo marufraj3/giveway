@@ -3,25 +3,34 @@ import { useState } from 'react';
 import { AlertCircle, ArrowRight, Eye, EyeOff, LoaderCircle, LockKeyhole, MessagesSquare, PlugZap } from 'lucide-react';
 import { api } from '@/hooks/use-scraper';
 
+export type TokenGateOptions = { verified:boolean; notice?:string };
+type Pending = { token:string; notice:string };
+
 /**
- * Entry screen. The app has no Facebook login: the workspace opens only after an
- * access token has been validated against Meta's Graph API.
+ * Entry screen. The app has no Facebook login: the workspace opens after an access
+ * token has been checked. `/me` is advisory, because Page and System User tokens are
+ * often rejected there while still working for Page and post endpoints.
  */
-export default function TokenGate({ onConnect, notice }: { onConnect:(token:string, identity:string)=>void; notice?:string }) {
+export default function TokenGate({ onConnect, notice }: { onConnect:(token:string, identity:string, options?:TokenGateOptions)=>void; notice?:string }) {
   const [token,setToken] = useState('');
   const [show,setShow] = useState(false);
   const [busy,setBusy] = useState(false);
   const [error,setError] = useState('');
+  const [pending,setPending] = useState<Pending|null>(null);
   const message = error || notice || '';
   const submit = async (event:React.FormEvent) => {
     event.preventDefault();
     const value = token.trim();
     if (!value || busy) return;
-    setBusy(true); setError('');
+    setBusy(true); setError(''); setPending(null);
     try {
       const user = await api('validate',{token:value});
+      if (user?.verified === false) {
+        setPending({token:value, notice: typeof user.notice === 'string' && user.notice ? user.notice : 'Meta did not accept this token on /me.'});
+        return;
+      }
       if (typeof user?.id !== 'string' || !user.id) throw new Error('Meta did not return a valid identity for this token.');
-      onConnect(value,typeof user.name === 'string' && user.name ? user.name : user.id);
+      onConnect(value,typeof user.name === 'string' && user.name ? user.name : user.id,{verified:true});
     } catch (e) {
       setError((e as Error).message || 'The token could not be validated.');
     } finally { setBusy(false); }
@@ -55,6 +64,22 @@ export default function TokenGate({ onConnect, notice }: { onConnect:(token:stri
           </div>
           <div className="field-help"><LockKeyhole size={13}/> Kept in this browser tab only and never saved on the server.</div>
           {message && <div className="alert error"><AlertCircle size={16}/>{message}</div>}
+          {pending && (
+            <div className="alert warning gate-warning">
+              <AlertCircle size={16}/>
+              <div>
+                <strong>Meta did not confirm this token on /me.</strong>
+                <p>{pending.notice}</p>
+                <p>Page access tokens and Business Manager System User tokens are often valid only for Page and post endpoints, not <code>/me</code>. You can continue; the first request will confirm access.</p>
+                <div className="gate-warning-actions">
+                  <button type="button" className="btn primary small" onClick={() => onConnect(pending.token,'Token not verified',{verified:false,notice:pending.notice})}>
+                    Continue anyway <ArrowRight size={14}/>
+                  </button>
+                  <button type="button" className="text-link" onClick={() => setPending(null)}>Use a different token</button>
+                </div>
+              </div>
+            </div>
+          )}
           <button className="btn primary gate-submit" type="submit" disabled={!token.trim() || busy}>
             {busy ? <LoaderCircle className="spin" size={16}/> : <PlugZap size={16}/>}
             {busy ? 'Validating…' : 'Open dashboard'} <ArrowRight size={15}/>

@@ -166,3 +166,34 @@ test('a Page token that cannot list Pages keeps the session and explains why', a
   assert.equal(readSessionToken(),'page-token');
   await close(rendered);
 });
+
+test('a token Meta will not confirm on /me can still open the dashboard', async () => {
+  mockApi();
+  const {readSessionToken, clearSessionToken} = await import('../lib/session-token');
+  clearSessionToken();
+  routes.validate = () => ({body:{id:'', name:'', type:'Unknown', verified:false, notice:'Meta rejected this token as invalid, expired, or issued for a different app. Meta said: "Invalid OAuth 2.0 Access Token".'}});
+  routes.pages = () => ({status:401, body:{error:'This method must be called with a user access token', code:'TOKEN', retryable:false}});
+  const rendered = await renderDashboard();
+  await waitFor(rendered,() => /Open your workspace/.test(rendered.text()),'gate');
+
+  const textarea = rendered.container.querySelector('textarea');
+  if (!textarea) throw new Error('missing token input');
+  const setter = Object.getOwnPropertyDescriptor(window.HTMLTextAreaElement.prototype,'value')?.set;
+  await rendered.React.act(async () => {
+    setter?.call(textarea,'EAABpagetoken');
+    textarea.dispatchEvent(new window.Event('input',{bubbles:true}));
+  });
+  const submit = Array.from(rendered.container.querySelectorAll('button')).find(button => /Open dashboard/.test(button.textContent || ''));
+  await rendered.React.act(async () => { submit?.click(); });
+  await waitFor(rendered,() => /Meta did not confirm this token on \/me/.test(rendered.text()),'advisory notice');
+
+  const proceed = Array.from(rendered.container.querySelectorAll('button')).find(button => /Continue anyway/.test(button.textContent || ''));
+  await rendered.React.act(async () => { proceed?.click(); });
+  await waitFor(rendered,() => /At a glance/.test(rendered.text()) && /Connected · unverified/.test(rendered.text()),'dashboard');
+  assert.equal(readSessionToken(),'EAABpagetoken');
+
+  const navigate = Array.from(rendered.container.querySelectorAll('button')).find(button => /New Scraper/.test(button.textContent || ''));
+  await rendered.React.act(async () => { navigate?.click(); });
+  await waitFor(rendered,() => /Page and System User tokens often work only on Page and post endpoints/.test(rendered.text()),'scraper warning');
+  await close(rendered);
+});
